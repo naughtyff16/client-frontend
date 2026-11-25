@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Unit tests stay local (not pushed to GitHub)
+*.test.ts
+*.test.tsx

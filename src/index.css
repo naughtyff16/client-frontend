@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@import "./lib/ui/theme.css";
+
+@source "./lib/ui";
+
+/* Print only the statement document (.print-root, mounted under <body>), in normal flow so long statements paginate. */
+.print-root { display: none; }
+@media print {
+  body:has(> .print-root) > :not(.print-root) { display: none !important; }
+  /* A document opened on top of another (e.g. a unit's OR / CR over the EWA it was released under) prints on its own. */
+  body:has(> .print-root.print-solo) > .print-root:not(.print-solo) { display: none !important; }
+  .print-root { display: block; background: #fff; color: #000; font-size: 12px; line-height: 1.375; }
+  .print-root thead { display: table-header-group; }
+  .print-root tr { break-inside: avoid; }
+  @page { size: letter; margin: 12mm; }
+}
