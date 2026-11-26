@@ -1,25 +1,34 @@
 # Backup and recovery targets — Delbros portals
 
-Source: Client Portal Document 3, point 7 (business owners' answer, 25-Nov-2026). Status: **recorded, to confirm before configuration.**
+Status: **targets settled from the client's answer, the BRD and Delbros's own answers.** The only step left is the restore exercise, which can run once the production environment exists.
 
-## What the client supplied
+## Sources
 
-| Item | Client wording | Recorded reading |
+| Source | What it says |
+|---|---|
+| Client Portal Document 3, point 7 (business owners, 25-Nov-2026) | "RPO - 7days + 12x Monthly + 2x semi-annual"; "RTO - 1hr" |
+| BRD V1.1, NFR-007 (Business Continuity) | "Daily automated backups with full system restoration achievable within 24 hours." Verified by a recovery test. |
+| BRD V1.1, Q-006 (open question) | "Target deployment model (cloud, private cloud, or on-premises) and associated RPO/RTO", to be confirmed at technical design sign-off |
+| Delbros Operational Gap Analysis answers (cross-functional) | "The new system must automatically back up all data daily to cloud storage and fully restore operations within 24 hours in case of system failure." |
+
+## Agreed targets
+
+| Item | Target | How it was reached |
 |---|---|---|
-| Backup retention | "RPO - 7days + 12x Monthly +2x semi-annual" | Keep daily backups for 7 days, 12 monthly backups and 2 semi-annual backups. This is a retention schedule. It is not yet a data-loss limit (see the questions below). |
-| Recovery time objective (RTO) | "RTO - 1hr" | After an outage, service is restored within 1 hour. |
-| Deployment model | Not stated | Open |
+| Deployment and backup location | Cloud: backups go to cloud storage (the release is packaged for AWS with `npm run package:aws`) | Delbros answer: "back up all data daily to cloud storage" |
+| Backup frequency | Daily, automated | BRD NFR-007 and the Delbros answer |
+| Recovery point objective (RPO) | Up to 24 hours of data loss (the last daily backup) | Follows from daily backups |
+| Retention | 7 daily backups, 12 monthly backups and 2 semi-annual backups | The client's "7days + 12x Monthly + 2x semi-annual", read as a retention schedule on top of the daily backups |
+| Recovery time objective (RTO) | 1 hour | The client's latest answer. It is stricter than the BRD's 24 hours, and the stricter value applies |
 
 ## Scope
 
 - **Client portal and staff portal front ends:** static files built by `npm run build` / `npm run package:aws`. They hold no business data. To recover, redeploy the last release package, then restore `public/app-config.json`.
-- **Business data:** the backend database and uploaded documents (OR/CR copies, receipts, contracts). It lives outside this repository, so the retention schedule and the 1-hour RTO apply there.
+- **Business data:** the backend database and uploaded documents (OR/CR copies, receipts, contracts). The targets above apply to these.
 - **Demo build:** the in-browser mock data is not backed up.
 
-## Questions to confirm before configuration
+## To do at deployment
 
-1. **Recovery point objective (RPO).** What is the most data the business can afford to lose? The answer sets how often backups run, for example every 24 hours, every hour, or continuous point-in-time recovery.
-2. **What "7 days" means.** Is it daily backups kept for 7 days, or one backup every 7 days?
-3. **Monthly and semi-annual copies.** Which day is kept each month and each half-year, and where are the copies stored (same region, another region, or offline)?
-4. **Deployment model.** Cloud (for example AWS, which matches the current `package:aws` packaging), on-premises or hybrid.
-5. **Proof of the 1-hour RTO.** Run a restore exercise once the environment exists, and record the measured time.
+1. Configure daily automated backups to cloud storage, with 7 daily, 12 monthly and 2 semi-annual copies kept.
+2. Run a restore exercise and record the measured time against the 1-hour RTO (BRD NFR-007 verification: recovery test).
+3. If the business wants less than 24 hours of possible data loss, increase the backup frequency (for example hourly or point-in-time recovery). That would be a change to the targets above.

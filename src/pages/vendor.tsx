@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, RotateCcw, Upload } from 'lucide-react';
 import { api } from '../lib/api-client';
-import { formatDate, formatDateTime, formatPhp } from '../lib/shared';
+import { formatDate, formatDateTime, formatPhp, manilaDay } from '../lib/shared';
 import { Banner, Button, DataTable, Field, FormGrid, Input, KpiTile, Modal, PageHeader, Select, Stack, StatusBadge } from '../lib/ui';
 import { errMessage, useAction, useData } from '../auth';
 
@@ -41,7 +41,7 @@ export function VendorPortalPage() {
   const underReview = (d?.invoices ?? []).filter((i) => ['Submitted', 'Under Review'].includes(i.status)).length;
   const paid = (d?.invoices ?? []).filter((i) => i.status === 'Paid').reduce((a, i) => a + i.amount, 0);
   const exportCsv = () => {
-    const rows = [['Type', 'Ref', 'Date', 'Amount', 'Status'], ...(d?.pos ?? []).map((p) => ['PO', p.poNo, p.createdAt.slice(0, 10), String(p.total), p.status]), ...(d?.invoices ?? []).map((i) => ['Invoice', i.invoiceNo, i.invoiceDate, String(i.amount), i.status])];
+    const rows = [['Type', 'Ref', 'Date', 'Amount', 'Status'], ...(d?.pos ?? []).map((p) => ['PO', p.poNo, manilaDay(p.createdAt), String(p.total), p.status]), ...(d?.invoices ?? []).map((i) => ['Invoice', i.invoiceNo, i.invoiceDate, String(i.amount), i.status])];
     const url = URL.createObjectURL(new Blob([rows.map((r) => r.join(',')).join('\n')], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'vendor-statement.csv'; a.click(); URL.revokeObjectURL(url);
   };

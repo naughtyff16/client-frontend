@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { CheckCircle2, FileText } from "lucide-react";
 import { api } from "../lib/api-client";
-import { CONTRACT_TYPES, TERMINATION_FEE_RULE, formatDate, formatDateTime, formatPhp } from "../lib/shared";
+import { CONTRACT_TYPES, ONE_TIME_FEES_NOTE, TERMINATION_FEE_APPLIES, TERMINATION_FEE_RULE, formatDate, formatDateTime, formatPhp } from "../lib/shared";
 import { Badge, Banner, Button, Card, CardHeader, DatePicker, Field, Input, Modal, PageHeader, Segmented, Select, Stack, Textarea, cn } from "../lib/ui";
 import { errMessage, useAction, useData } from "../auth";
 import { PortalStatus, daysFromToday, plural } from "./portalUi";
@@ -149,7 +149,9 @@ function ContractDetail({ c, eqName, onRequest }: { c: Ct; eqName: (c: string) =
         <Term label="Termination fee">
           {c.termination && c.termination.status !== "Rejected" && c.termination.fee != null ? (
             <>{formatPhp(c.termination.fee)}<span className="block text-sm font-normal text-muted">entered by Delbros{c.termination.feeEnteredAt ? ` ${formatDate(c.termination.feeEnteredAt)}` : ""}{c.termination.status === "Pending" ? " · termination awaiting approval" : ""}{c.termination.feeMemoNo ? ` · debit memo ${c.termination.feeMemoNo}` : ""}</span></>
-          ) : c.status !== "Active" ? "—" : (
+          ) : c.status !== "Active" ? "—" : !TERMINATION_FEE_APPLIES[c.contractType] ? (
+            <>None<span className="block text-sm font-normal text-muted">{CONTRACT_TYPES[c.contractType]?.name ?? c.contractType} contracts can be ended without a termination fee</span></>
+          ) : (
             <>Set by Delbros for each termination
               <span className="block text-sm font-normal text-muted">Guidance: {TERMINATION_FEE_RULE.join(" ")}{pt.lockInEnd ? ` Lock-in ends ${formatDate(pt.lockInEnd)}.` : ""}</span></>
           )}
@@ -165,8 +167,9 @@ function ContractDetail({ c, eqName, onRequest }: { c: Ct; eqName: (c: string) =
         <Term label="Non-return penalty">{formatPhp(t.nonReturn)} {t.nonReturnBasis}</Term>
         <Term label="Dishonored check">{formatPhp(t.dishonoredCheck)}</Term>
         <Term label="Deferred check">{formatPhp(t.deferredCheck)}</Term>
-        <Term label="Common handling fee">{formatPhp(t.handlingFee)}</Term>
-        <Term label="Common administrative cost">{formatPhp(t.adminCost)}</Term>
+        {/* Delbros source data: the ₱200 + ₱80 are collected once with the initial monetary requirements, before activation. */}
+        <Term label="Common handling fee">{formatPhp(t.handlingFee)}<span className="block text-sm font-normal text-muted">{ONE_TIME_FEES_NOTE}</span></Term>
+        <Term label="Common administrative cost">{formatPhp(t.adminCost)}<span className="block text-sm font-normal text-muted">{ONE_TIME_FEES_NOTE}</span></Term>
         <Term label="Payment methods">{t.paymentMethods.join(", ")}</Term>
         <Term label="Client signatory">{c.signatory ? <>{c.signatory.name}<span className="block text-sm font-normal text-muted">{c.signatory.email}</span></> : "—"}</Term>
         <Term label="Region">{c.regionName}</Term>

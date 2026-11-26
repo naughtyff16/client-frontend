@@ -41,6 +41,16 @@ export function initialCostSummary(type: ContractType) {
  * Client Portal Document 2 D-04: the client's termination-fee cases, in the client's own words. The "6 months" basis (elapsed or remaining
  * term), the exact boundary, how remaining PDCs are valued and which units / rates count are still to be clarified, so no amount is computed.
  */
+/** Delbros Data Master File ("Type of contract"): QLP — no termination fee; Spot Lease — return anytime, no termination fee; LTL — with termination fee. */
+export const TERMINATION_FEE_APPLIES: Record<ContractType, boolean> = { LTL: true, SPL: false, QLP: false };
+/** BRD UC-09 step 4: the two conditions under which Credit & Collection may request a hold lift. */
+export const HOLD_LIFT_BASES = ['Balance settled', 'Payment arrangement confirmed'] as const;
+/**
+ * Handling fee and administrative cost (₱200 + ₱80): collected once with the initial monetary requirements — cash bond, e-wallet and advance
+ * payment — before the contract is activated (Delbros client profiling tracker: "Admin and Handling Fee ₱280"; contract-creation flow: C&C
+ * validates the monetary deposit and issues a Non-VAT Acknowledgement Receipt).
+ */
+export const ONE_TIME_FEES_NOTE = 'one-time, collected with the initial monetary requirements before the contract is activated';
 /** Client Portal Document 2 D-04 — kept as guidance only: Document 3 point 4 makes the fee a staff-entered amount (no built-in formula). */
 export const TERMINATION_FEE_RULE = [
   'Below 6 months: the remaining post-dated checks (PDC) automatically serve as the termination fee.',

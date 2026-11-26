@@ -24,6 +24,7 @@ import {
   RESCUE_PROBLEM_OTHER,
   RESCUE_PROBLEM_TYPES,
   SOA_SCOPE_NOTE,
+  billingStatementRef,
   formatDate,
   manilaDay,
   formatDateTime,
@@ -2087,6 +2088,7 @@ function InvoicePrint({
       {i.status !== "Cancelled" && <p className="mb-2">{dueBasisNote(i)}</p>}
       <p className="mb-2">
         Period {formatDate(i.periodStart)} – {formatDate(i.periodEnd)}
+        {billingStatementRef(i) ? ` · Billing statement ${billingStatementRef(i)}` : ""}
         {i.contractNo ? ` · Contract ${i.contractNo}` : ""}
       </p>
       <table className="w-full border-collapse">
@@ -2449,7 +2451,7 @@ export function ClientInvoicesPage() {
         title={<span className="font-mono">{inv?.invoiceNo}</span>}
         description={
           inv
-            ? `Invoice date ${formatDate(inv.invoiceDate)} · ${inv.isLease ? `period ${formatDate(inv.periodStart)} – ${formatDate(inv.periodEnd)}` : periodLabel(inv)} · due ${cancelled(inv) ? "—" : dueText(inv)}`
+            ? `Invoice date ${formatDate(inv.invoiceDate)} · ${inv.isLease ? `period ${formatDate(inv.periodStart)} – ${formatDate(inv.periodEnd)}${billingStatementRef(inv) ? ` · billing statement ${billingStatementRef(inv)}` : ""}` : periodLabel(inv)} · due ${cancelled(inv) ? "—" : dueText(inv)}`
             : undefined
         }
         size="lg"
@@ -2855,7 +2857,7 @@ export function FeedbackModal({
             label="Reference (optional)"
             value={f.reference}
             onChange={(e) => setF({ ...f, reference: e.target.value })}
-            placeholder="e.g. LTL-2026-0045, INV-MNL-00001102"
+            placeholder="e.g. LTL-2026-0045, DWLCI-261102"
           />
         </FormGrid>
         <Input

@@ -1,4 +1,14 @@
-import { daysBetween, round2 } from '../format';
+import { daysBetween, manilaDay, round2 } from '../format';
+
+/**
+ * Delbros billing statement reference, as on the Delbros printed invoice and the VAT filing ("2026-04-07WK", "2025-08-31MO"): the last day of
+ * the billed period + WK (weekly) or MO (monthly). Lease bills only — one-off charges (repair, GPS, damage) carry the invoice number alone.
+ */
+export function billingStatementRef(i: { periodEnd?: string; billingCycle?: string; lines?: { lineType?: string }[] }) {
+  if (!i.periodEnd || !i.lines?.some((l) => l.lineType === 'Lease')) return undefined;
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(i.periodEnd) ? i.periodEnd : manilaDay(i.periodEnd);
+  return `${day}${i.billingCycle === 'Monthly' ? 'MO' : 'WK'}`;
+}
 
 // BR-05 late encoding path.
 export function lateEncodingPath(actualIso: string, encodedIso: string, autoDays = 7) {

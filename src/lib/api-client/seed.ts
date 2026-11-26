@@ -116,7 +116,8 @@ function buildSeedAt(): Db {
   const rates = (base: number) => equipmentTypes.map((e, i) => ({ equipmentType: e.code, dailyRate: base + i * 50, indemnity: 350000 + i * 25000 }));
   const contract = (no: string, clientCode: string, type: Contract['contractType'], cls: Contract['class'], months: number | undefined, base: number, status: Contract['status'] = 'Active'): Contract => ({
     contractNo: no, clientCode, contractType: type, class: cls, effectiveDate: manilaDay(ago(200)), expiryDate: months ? manilaDay(addDays(ago(200), months * 30)) : undefined,
-    unitQty: 10, region: 'NCR', paymentMethod: 'Check', billingCycle: 'Weekly', creditTermDays: 30, cashDeposit: status === 'Active' ? CONTRACT_TERMS[type].cashBond : 20000, lockInMonths: type === 'LTL' ? 12 : 0,
+    // Client Portal Document 1 §1.9 / BRD UC-02: the billing cycle is set per contract — the demo contracts follow their client's billing (Monthly for Pacific Movers).
+    unitQty: 10, region: 'NCR', paymentMethod: 'Check', billingCycle: clients.find((x) => x.clientCode === clientCode)?.billingCycle ?? 'Weekly', creditTermDays: 30, cashDeposit: status === 'Active' ? CONTRACT_TERMS[type].cashBond : 20000, lockInMonths: type === 'LTL' ? 12 : 0,
     // Client Portal Document 1 §3: penalties come from the contract type's own terms (LTL / QLP / Spot Lease differ). Spot Lease has no
     // dishonored-check amount in the document, so the contract keeps its own signed value.
     penalties: { nonReturn: CONTRACT_TERMS[type].nonReturn, deferredCheck: CONTRACT_TERMS[type].deferredCheck, lateInterestPct: 2, dishonoredCheck: CONTRACT_TERMS[type].dishonoredCheck ?? 2500 }, status, createdAt: ago(210),
@@ -232,7 +233,7 @@ function buildSeedAt(): Db {
         units: [{ equipmentType: ret.chassisType, qty: 1, usedChassis: [ret.chassisNo] }], createdAt: addHours(outAt, -27), validUntil: addHours(outAt, 22.5), createdVia: 'Portal', status: 'Used', extensionCount: 1, createdBy: 'client@abclogistics.ph',
         extensions: [{ requestedAt: addHours(outAt, -2.5), requestedBy: 'client@abclogistics.ph', reason: 'Truck held at the port; driver arriving this morning', workflowId: 'WF-EWX-0', status: 'Approved', decidedAt: addHours(outAt, -1.5), decidedBy: 'DYM.MNL', validUntilBefore: addHours(outAt, -3), validUntilAfter: addHours(outAt, 22.5) }] });
       gatePasses.push({ ...base, gatePassNo: 'MNL0880', direction: 'OUT', euNo: 'EU-TMP-R', truckOrcr: 'OR 4100190 / CR 5200290', actualEventAt: outAt, encodedAt: outAt, eirNo: 'EIR-MNL-000180', pairedGatePassNo: 'MNL0881', inspection: checklist() },
-        { ...base, gatePassNo: 'MNL0881', direction: 'IN', actualEventAt: inAt, encodedAt: inAt, eirNo: 'EIR-MNL-000181', pairedGatePassNo: 'MNL0880', originBranchCode: 'MNL', remarks: 'Tail lamp and wiring damaged — chargeable ₱4,500 (billed on INV-MNL-00001118)', inspection: checklist({ 'Lights & wiring': 4500 }) });
+        { ...base, gatePassNo: 'MNL0881', direction: 'IN', actualEventAt: inAt, encodedAt: inAt, eirNo: 'EIR-MNL-000181', pairedGatePassNo: 'MNL0880', originBranchCode: 'MNL', remarks: 'Tail lamp and wiring damaged — chargeable ₱4,500 (billed on DWLCI-261118)', inspection: checklist({ 'Lights & wiring': 4500 }) });
     }
     // Portal dashboard review (BR-16): an ABC unit hired out at Cavite and returned at Manila with the IT-issued cross-branch approval code.
     // A cracked tail lamp was found at Gate In — chargeable ₱950 on the inbound EIR. It is the oldest release, so it keeps EU-000599 and the other EU numbers do not move.
@@ -332,7 +333,7 @@ function buildSeedAt(): Db {
       ...o,
     };
   };
-  // ── Timeline 2 review (INV-MNL-00001119): ABC's weekly lease invoices are built from its actual hire lines — every unit released under
+  // ── Timeline 2 review (DWLCI-261119): ABC's weekly lease invoices are built from its actual hire lines — every unit released under
   // LTL-2026-0045 (Gate Out → Gate In, or still on hire), billed for the days it was out inside the week (pickup and return day count),
   // at the contract rate of its own (entitled) type. Weeks follow fin.weekly_cycle_start (Client Portal Document 1 §1.9: Monday–Sunday); the invoice is dated
   // the first day of the next week. Replaces the earlier sample mix (₱42,000 a week, lines dated before the week, repeated units).
@@ -358,15 +359,15 @@ function buildSeedAt(): Db {
     return { ...base, lines, subtotal, vat, total: round2(subtotal + vat) };
   };
   const invoices: Invoice[] = [
-    leaseFromHires('INV-MNL-00001101', k0 + 14, 0),
-    leaseFromHires('INV-MNL-00001102', k0 + 7, 20000),
-    inv('INV-MNL-00001050', 'C-00188', 'SPL-2026-0012', 75, [[0, 30], [1, 30], [2, 30], [3, 30], [4, 30]], 0),
-    inv('INV-MNL-00001068', 'C-00188', 'SPL-2026-0012', 45, [[3, 30], [1, 30], [1, 20]], 0),
-    inv('INV-CEB-00000310', 'C-00201', 'LTL-2026-0051', 10, [[3, 7], [4, 7], [5, 7], [6, 7], [7, 7]], 43120, 'CEB', { heldReason: 'Awaiting late-encoding credit memo CM-000009 approval (BR-05) — Deputy Yard Manager + Treasury' }),
-    inv('INV-BTG-00000122', 'C-00215', 'QLP-2026-0007', 50, [[0, 30], [4, 20]], 30000, 'BTG'),
-    inv('INV-MNL-00001120', 'C-00230', 'LTL-2026-0060', 5, [[0, 7], [1, 7], [2, 7], [2, 7], [3, 7], [3, 7], [6, 3]], 0),
+    leaseFromHires('DWLCI-261101', k0 + 14, 0),
+    leaseFromHires('DWLCI-261102', k0 + 7, 20000),
+    inv('DWLCI-261050', 'C-00188', 'SPL-2026-0012', 75, [[0, 30], [1, 30], [2, 30], [3, 30], [4, 30]], 0),
+    inv('DWLCI-261068', 'C-00188', 'SPL-2026-0012', 45, [[3, 30], [1, 30], [1, 20]], 0),
+    inv('DWLCI-260310', 'C-00201', 'LTL-2026-0051', 10, [[3, 7], [4, 7], [5, 7], [6, 7], [7, 7]], 43120, 'CEB', { heldReason: 'Awaiting late-encoding credit memo CM-000009 approval (BR-05) — Deputy Yard Manager + Treasury' }),
+    inv('DWLCI-260122', 'C-00215', 'QLP-2026-0007', 50, [[0, 30], [4, 20]], 30000, 'BTG'),
+    inv('DWLCI-261120', 'C-00230', 'LTL-2026-0060', 5, [[0, 7], [1, 7], [2, 7], [2, 7], [3, 7], [3, 7], [6, 3]], 0),
   ];
-  const cm10 = { net: 0, amount: 0, balanceAfter: 0 }; // CM-000010 — 2% of INV-MNL-00001101's net, set below
+  const cm10 = { net: 0, amount: 0, balanceAfter: 0 }; // CM-000010 — 2% of DWLCI-261101's net, set below
   const earlierReceipts: Db['receipts'] = []; // Timeline 3: Official Receipts that paid ABC's earlier weekly invoices
   {
     // BR-05: the late-encoded Visayas unit (LE-00099, 9 days, WF-LE-1) is held on its invoice — excluded from the totals until CM-000009 is approved.
@@ -380,26 +381,26 @@ function buildSeedAt(): Db {
       return { ...base, lines: [{ ...line, id: `${no}-1` }], subtotal: line.amount, vat, total: line.amount + vat };
     };
     invoices.push(
-      // A one-off repair bill covers the gate-in day it was found, not a weekly lease period (review 1.1: no overlap with INV-MNL-00001102).
+      // A one-off repair bill covers the gate-in day it was found, not a weekly lease period (review 1.1: no overlap with DWLCI-261102).
       // Portal invoice review: this is not a lease bill — it bills the damage found at the MNL0881 Gate In (35 days ago): ₱4,500 + 12% VAT = ₱5,040.
-      one('INV-MNL-00001118', 'C-00123', 'LTL-2026-0045', k0 + 2, 'Repair', { id: '', lineType: 'Damage', description: 'Chargeable damage — tail lamp + wiring (EIR-MNL-000181, Gate In MNL0881)', chassisNo: chassis[0].chassisNo, from: ago(35), to: ago(35), rateType: 'Fixed — EIR chargeable', amount: 4500 }, 0, 'MNL', { periodStart: manilaDay(ago(35)), periodEnd: manilaDay(ago(35)) }),
-      one('INV-CEB-00000315', 'C-00201', 'LTL-2026-0051', 3, 'GPS', { id: '', lineType: 'GPS', description: 'GPS tracking fee — 2 units × 1 month', days: 2, rate: 500, rateType: 'Monthly per unit (proposed, DBL-FIN-010)', amount: 1000 }, 0, 'CEB'),
-      one('INV-MNL-00001105', 'C-00230', 'LTL-2026-0060', 18, 'Special', { id: '', lineType: 'Special', description: 'Special billing — weekend yard handling', rateType: 'Fixed — special billing', amount: 2000, reason: 'Client request (DBL-FIN-004)' }, 0, 'MNL', { credited: 2240 }),
-      // Numbered right after INV-MNL-00001102: the duplicate came out of the same billing run (review 1.1: numbers follow issue dates).
-      one('INV-MNL-00001103', 'C-00123', 'LTL-2026-0045', k0 + 7, 'Lease', { id: '', lineType: 'Lease', description: 'Duplicate of INV-MNL-00001102 (same client & period)', amount: invoices[1].subtotal }, 0, 'MNL', { status: 'Cancelled', cancelReason: 'Billing batch conflict — duplicate of INV-MNL-00001102' }),
+      one('DWLCI-261118', 'C-00123', 'LTL-2026-0045', k0 + 2, 'Repair', { id: '', lineType: 'Damage', description: 'Chargeable damage — tail lamp + wiring (EIR-MNL-000181, Gate In MNL0881)', chassisNo: chassis[0].chassisNo, from: ago(35), to: ago(35), rateType: 'Fixed — EIR chargeable', amount: 4500 }, 0, 'MNL', { periodStart: manilaDay(ago(35)), periodEnd: manilaDay(ago(35)) }),
+      one('DWLCI-260315', 'C-00201', 'LTL-2026-0051', 3, 'GPS', { id: '', lineType: 'GPS', description: 'GPS tracking fee — 2 units × 1 month', days: 2, rate: 500, rateType: 'Monthly per unit (proposed, DBL-FIN-010)', amount: 1000 }, 0, 'CEB'),
+      one('DWLCI-261105', 'C-00230', 'LTL-2026-0060', 18, 'Special', { id: '', lineType: 'Special', description: 'Special billing — weekend yard handling', rateType: 'Fixed — special billing', amount: 2000, reason: 'Client request (DBL-FIN-004)' }, 0, 'MNL', { credited: 2240 }),
+      // Numbered right after DWLCI-261102: the duplicate came out of the same billing run (review 1.1: numbers follow issue dates).
+      one('DWLCI-261103', 'C-00123', 'LTL-2026-0045', k0 + 7, 'Lease', { id: '', lineType: 'Lease', description: 'Duplicate of DWLCI-261102 (same client & period)', amount: invoices[1].subtotal }, 0, 'MNL', { status: 'Cancelled', cancelReason: 'Billing batch conflict — duplicate of DWLCI-261102' }),
     );
-    invoices[invoices.length - 1].history?.push({ at: ago(k0 + 6), by: 'FINMGR', action: 'Cancelled', note: 'Billing batch conflict — duplicate of INV-MNL-00001102' });
+    invoices[invoices.length - 1].history?.push({ at: ago(k0 + 6), by: 'FINMGR', action: 'Cancelled', note: 'Billing batch conflict — duplicate of DWLCI-261102' });
     invoices[invoices.length - 2].history?.push({ at: ago(10), by: 'FINMGR', action: 'Credited', note: 'CM-000008 applied (no-rescue service dispute)' });
-    // Portal invoice review: the weekly lease bill that follows INV-MNL-00001102 — billing periods now run without a gap.
-    invoices.push(leaseFromHires('INV-MNL-00001119', k0, 0));
-    // Timeline 3 review (DBL-CNC-005, provisional): INV-MNL-00001119 is the first invoice issued under the acknowledgment basis — no due date until
+    // Portal invoice review: the weekly lease bill that follows DWLCI-261102 — billing periods now run without a gap.
+    invoices.push(leaseFromHires('DWLCI-261119', k0, 0));
+    // Timeline 3 review (DBL-CNC-005, provisional): DWLCI-261119 is the first invoice issued under the acknowledgment basis — no due date until
     // the client acknowledges receipt (never generated). Every earlier invoice keeps the due date recorded at issue (Legacy).
     const i1119 = invoices[invoices.length - 1];
     Object.assign(i1119, { dueBasis: 'Acknowledgment', dueDate: '' });
     i1119.history?.push({ at: i1119.issuedAt, by: 'system', action: 'Due-date basis', note: 'Credit term starts on the client’s acknowledgment of receipt (DBL-CNC-005, provisional rule for new invoices)' });
 
     // Timeline 3 review ("earlier on-hire rent absent"): every billable day of LTL-2026-0045 from the first Gate Out is on exactly one weekly
-    // invoice. The weeks before INV-MNL-00001101 (the returned DW-MNL-1001 / DW-CAV-1015 and the first days of the units still on hire, e.g.
+    // invoice. The weeks before DWLCI-261101 (the returned DW-MNL-1001 / DW-CAV-1015 and the first days of the units still on hire, e.g.
     // ₱34,300 for 07–22 Oct in the V1.3 capture) are billed from the same hire lines and were paid in full (Official Receipts, oldest first).
     const ltl = hiresOf('C-00123', 'LTL-2026-0045');
     const firstOut = ltl.map((h) => h.outDay).sort()[0];
@@ -407,17 +408,18 @@ function buildSeedAt(): Db {
     const today = manilaDay(now());
     const earlier = weeklyPeriods(firstOut, before1101, wk.startIndex)
       .map((p) => ({ p, ago: Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${p.invoiceDate}T00:00:00Z`)) / 86_400_000) }))
-      .map(({ ago: d }) => leaseFromHires('INV-MNL-TMP', d, 0))
+      .map(({ ago: d }) => leaseFromHires('DWLCI-TMP', d, 0))
       .filter((x) => x.lines.length);
-    // Numbers follow issue dates inside the MNL series: each earlier invoice takes the next free number after the MNL invoice issued just before it.
-    const fixed = invoices.filter((x) => x.invoiceNo.startsWith('INV-MNL-')).map((x) => ({ no: Number(x.invoiceNo.slice(-8)), at: x.issuedAt }));
+    // Numbers follow issue dates in the Delbros DWLCI series (one company-wide series; these earlier invoices sit among the Manila ones):
+    // each earlier invoice takes the next free number after the Manila invoice issued just before it.
+    const fixed = invoices.filter((x) => x.invoiceNo.startsWith('DWLCI-') && x.branchCode === 'MNL').map((x) => ({ no: Number(x.invoiceNo.slice(6)), at: x.issuedAt }));
     for (const e of [...earlier].sort((a, b) => a.issuedAt.localeCompare(b.issuedAt))) {
       const prev = fixed.filter((f) => f.at <= e.issuedAt).sort((a, b) => b.no - a.no)[0];
       const next = fixed.filter((f) => f.at > e.issuedAt).sort((a, b) => a.no - b.no)[0];
-      let no = prev ? prev.no + 1 : (next?.no ?? 1100) - 20;
+      let no = prev ? prev.no + 1 : (next?.no ?? 261100) - 20;
       while (fixed.some((f) => f.no === no)) no++;
       if (next && no >= next.no) throw new Error(`seed: no free invoice number between ${prev?.no} and ${next.no}`);
-      e.invoiceNo = `INV-MNL-${String(no).padStart(8, '0')}`;
+      e.invoiceNo = `DWLCI-${String(no).padStart(6, '0')}`;
       e.lines = e.lines.map((l, k) => ({ ...l, id: `${e.invoiceNo}-${k + 1}` }));
       fixed.push({ no, at: e.issuedAt });
     }
@@ -432,8 +434,8 @@ function buildSeedAt(): Db {
         applications: [{ invoiceNo: e.invoiceNo, amount: e.total }], history: [{ at: paidAt, by: 'ACCTG', action: 'PR recorded' }, { at: addDays(paidAt, 1), by: 'TREAS', action: `Clearance confirmed — OR-MNL-${no} issued` }] });
     });
     invoices.push(...earlier);
-    // BR-05 / review: CM-000010 (2% creditable withholding tax, BIR 2307, on the net) applied to INV-MNL-00001101 — shown as a Credit Memo row on the SOA.
-    const i1101 = invoices.find((i) => i.invoiceNo === 'INV-MNL-00001101');
+    // BR-05 / review: CM-000010 (2% creditable withholding tax, BIR 2307, on the net) applied to DWLCI-261101 — shown as a Credit Memo row on the SOA.
+    const i1101 = invoices.find((i) => i.invoiceNo === 'DWLCI-261101');
     if (i1101) {
       cm10.net = i1101.subtotal; cm10.amount = round2(i1101.subtotal * 0.02); cm10.balanceAfter = round2(i1101.total - cm10.amount);
       i1101.credited = cm10.amount; i1101.history?.push({ at: ago(2), by: 'ACCTG', action: 'Credited', note: 'CM-000010 applied (withholding tax, BIR 2307)' });
@@ -562,16 +564,16 @@ function buildSeedAt(): Db {
   });
   const billingReceipts: Db['receipts'] = [
     billRc({ receiptNo: 'PR-MNL-00000455', clientCode: 'C-00230', amount: 30000, method: 'Check', checkNo: '0081234', bank: 'BPI', checkDate: ahead(3).slice(0, 10), pdc: true, depositStatus: 'Not deposited', date: ago(1).slice(0, 10), createdAt: ago(1),
-      reference: 'BPI 0081234', applications: [{ invoiceNo: 'INV-MNL-00001120', amount: 30000 }], notes: 'Post-dated check received at Manila cashier; deposit on check date.' }),
+      reference: 'BPI 0081234', applications: [{ invoiceNo: 'DWLCI-261120', amount: 30000 }], notes: 'Post-dated check received at Manila cashier; deposit on check date.' }),
     billRc({ receiptNo: 'PR-MNL-00000447', orNo: 'OR-MNL-00000450', type: 'OR', status: 'OR Issued', clientCode: 'C-00123', amount: 20000, method: 'Check', checkNo: '004512', bank: 'BDO', checkDate: ago(6).slice(0, 10), depositStatus: 'Cleared', reference: 'BDO 004512',
-      date: ago(6).slice(0, 10), createdAt: ago(6), clearedAt: ago(5).slice(0, 10), clearedBy: 'TREAS', applications: [{ invoiceNo: 'INV-MNL-00001102', amount: 20000 }],
+      date: ago(6).slice(0, 10), createdAt: ago(6), clearedAt: ago(5).slice(0, 10), clearedBy: 'TREAS', applications: [{ invoiceNo: 'DWLCI-261102', amount: 20000 }],
       history: [{ at: ago(6), by: 'ACCTG', action: 'PR recorded' }, { at: ago(5), by: 'TREAS', action: 'Clearance confirmed — OR-MNL-00000450 issued' }] }),
     billRc({ receiptNo: 'PR-CEB-00000451', orNo: 'OR-CEB-00000452', type: 'OR', status: 'OR Issued', clientCode: 'C-00201', amount: 43120, method: 'Bank Transfer', bank: 'Metrobank', reference: 'MBTC-TRF-88120', date: ago(4).slice(0, 10), createdAt: ago(4),
-      clearedAt: ago(3).slice(0, 10), clearedBy: 'TREAS', depositStatus: 'Cleared', applications: [{ invoiceNo: 'INV-CEB-00000310', amount: 43120 }], history: [{ at: ago(4), by: 'ACCTG', action: 'PR recorded' }, { at: ago(3), by: 'TREAS', action: 'Clearance confirmed — OR-CEB-00000452 issued' }] }),
+      clearedAt: ago(3).slice(0, 10), clearedBy: 'TREAS', depositStatus: 'Cleared', applications: [{ invoiceNo: 'DWLCI-260310', amount: 43120 }], history: [{ at: ago(4), by: 'ACCTG', action: 'PR recorded' }, { at: ago(3), by: 'TREAS', action: 'Clearance confirmed — OR-CEB-00000452 issued' }] }),
     billRc({ receiptNo: 'PR-BTG-00000441', orNo: 'OR-BTG-00000442', type: 'OR', status: 'OR Issued', clientCode: 'C-00215', amount: 30000, method: 'Check', checkNo: '220019', bank: 'Landbank', checkDate: ago(30).slice(0, 10), reference: 'LBP 220019',
-      date: ago(30).slice(0, 10), createdAt: ago(30), clearedAt: ago(27).slice(0, 10), clearedBy: 'TREAS', depositStatus: 'Cleared', applications: [{ invoiceNo: 'INV-BTG-00000122', amount: 30000 }] }),
+      date: ago(30).slice(0, 10), createdAt: ago(30), clearedAt: ago(27).slice(0, 10), clearedBy: 'TREAS', depositStatus: 'Cleared', applications: [{ invoiceNo: 'DWLCI-260122', amount: 30000 }] }),
     billRc({ receiptNo: 'PR-MNL-00000449', status: 'Bounced', clientCode: 'C-00188', amount: 50000, method: 'Check', checkNo: '0012077', bank: 'RCBC', checkDate: ago(12).slice(0, 10), depositStatus: 'Returned', reference: 'RCBC 0012077',
-      date: ago(12).slice(0, 10), createdAt: ago(12), applications: [{ invoiceNo: 'INV-MNL-00001068', amount: 50000 }], penaltyMemoNo: 'DM-000037', notes: 'Returned DAIF by RCBC; client informed by C&C.',
+      date: ago(12).slice(0, 10), createdAt: ago(12), applications: [{ invoiceNo: 'DWLCI-261068', amount: 50000 }], penaltyMemoNo: 'DM-000037', notes: 'Returned DAIF by RCBC; client informed by C&C.',
       history: [{ at: ago(12), by: 'ACCTG', action: 'PR recorded' }, { at: ago(9), by: 'TREAS', action: 'Bounced — check returned DAIF', note: 'Dishonoured-check penalty DM-000037 raised' }] }),
     billRc({ receiptNo: 'PR-MNL-00000448', status: 'Cancelled', clientCode: 'C-00123', amount: 5000, method: 'Cash', date: ago(9).slice(0, 10), createdAt: ago(9), unapplied: 5000, cancelReason: 'Encoded under the wrong client — re-issued under Metro Container Lines', cancelledBy: 'ACCTG',
       history: [{ at: ago(9), by: 'ACCTG', action: 'PR recorded' }, { at: ago(9), by: 'ACCTG', action: 'Cancelled', note: 'Encoded under the wrong client' }] }),
@@ -589,17 +591,17 @@ function buildSeedAt(): Db {
   if (leWf) { leWf.steps[0] = { ...leWf.steps[0], decision: 'Approved', decidedBy: 'DYM.MNL', decidedAt: ago(0.5), comment: 'DYM.MNL:DYM:Outage report verified|' }; leWf.currentStep = 1; leWf.steps[1].dueAt = ahead(1.5); }
   const leHeld = invoices[4].lines.find((l) => l.held);
   const billingMemos: Db['memos'] = [
-    { memoNo: 'CM-000010', type: 'Credit', clientCode: 'C-00123', referenceInvoiceNo: 'INV-MNL-00001101', referenceType: 'Invoice', amount: cm10.amount, reason: `Creditable withholding tax (2% of ${formatPhp(cm10.net)} net) on INV-MNL-00001101 — BIR Form 2307 received`, category: 'Withholding-tax adjustment', status: 'Applied', workflowId: 'WF-CM-10',
-      createdAt: ago(3), createdBy: 'ACCTG', source: 'Manual', evidence: ['BIR-2307-ABC-2026Q3.pdf'], approvalChain: ['Finance Manager'], appliedTo: 'INV-MNL-00001101', appliedAt: ago(2), balanceAfter: cm10.balanceAfter },
-    { memoNo: 'CM-000009', type: 'Credit', clientCode: 'C-00201', referenceInvoiceNo: 'INV-CEB-00000310', referenceType: 'Late Encoding', referenceId: 'LE-00099', amount: leHeld?.amount ?? 0, reason: 'Late encoding 9 days — bill the held unit from the actual gate-out date (BR-05)',
+    { memoNo: 'CM-000010', type: 'Credit', clientCode: 'C-00123', referenceInvoiceNo: 'DWLCI-261101', referenceType: 'Invoice', amount: cm10.amount, reason: `Creditable withholding tax (2% of ${formatPhp(cm10.net)} net) on DWLCI-261101 — BIR Form 2307 received`, category: 'Withholding-tax adjustment', status: 'Applied', workflowId: 'WF-CM-10',
+      createdAt: ago(3), createdBy: 'ACCTG', source: 'Manual', evidence: ['BIR-2307-ABC-2026Q3.pdf'], approvalChain: ['Finance Manager'], appliedTo: 'DWLCI-261101', appliedAt: ago(2), balanceAfter: cm10.balanceAfter },
+    { memoNo: 'CM-000009', type: 'Credit', clientCode: 'C-00201', referenceInvoiceNo: 'DWLCI-260310', referenceType: 'Late Encoding', referenceId: 'LE-00099', amount: leHeld?.amount ?? 0, reason: 'Late encoding 9 days — bill the held unit from the actual gate-out date (BR-05)',
       category: 'Late-encoding correction', status: 'Pending Approval', workflowId: 'WF-LE-1', createdAt: ago(1), createdBy: 'BG.MNL', source: 'Auto', evidence: ['outage-report-ITSR-0142.pdf'], approvalChain: ['Deputy Yard Manager', 'Treasury'] },
-    { memoNo: 'CM-000008', type: 'Credit', clientCode: 'C-00230', referenceInvoiceNo: 'INV-MNL-00001105', referenceType: 'Invoice', amount: 2240, reason: 'Special billing disputed — handling was covered by the rescue already charged', category: 'No-rescue service dispute', status: 'Applied',
-      workflowId: 'WF-CM-8', createdAt: ago(11), createdBy: 'ACCTG', source: 'Manual', evidence: ['client-dispute-letter.pdf'], approvalChain: ['Finance Manager'], appliedTo: 'INV-MNL-00001105', balanceAfter: 0, appliedAt: ago(10) },
-    { memoNo: 'CM-000007', type: 'Credit', clientCode: 'C-00215', referenceInvoiceNo: 'INV-BTG-00000122', referenceType: 'Invoice', amount: 3000, reason: 'Client claims overbilling of 2 days', category: 'Billing correction', status: 'Rejected',
+    { memoNo: 'CM-000008', type: 'Credit', clientCode: 'C-00230', referenceInvoiceNo: 'DWLCI-261105', referenceType: 'Invoice', amount: 2240, reason: 'Special billing disputed — handling was covered by the rescue already charged', category: 'No-rescue service dispute', status: 'Applied',
+      workflowId: 'WF-CM-8', createdAt: ago(11), createdBy: 'ACCTG', source: 'Manual', evidence: ['client-dispute-letter.pdf'], approvalChain: ['Finance Manager'], appliedTo: 'DWLCI-261105', balanceAfter: 0, appliedAt: ago(10) },
+    { memoNo: 'CM-000007', type: 'Credit', clientCode: 'C-00215', referenceInvoiceNo: 'DWLCI-260122', referenceType: 'Invoice', amount: 3000, reason: 'Client claims overbilling of 2 days', category: 'Billing correction', status: 'Rejected',
       workflowId: 'WF-CM-7', createdAt: ago(19), createdBy: 'ACCTG', source: 'Manual', evidence: ['client-email.pdf'], approvalChain: ['Finance Manager'] },
     { memoNo: 'DM-000038', type: 'Debit', clientCode: 'C-00123', referenceType: 'Job Order', referenceId: 'JO-MNL-000512', joNo: 'JO-MNL-000512', amount: 13328, reason: 'Chargeable repair after gate-in — two tires and brake lining', category: 'Repair cost', status: 'Draft',
       createdAt: ago(0.5), createdBy: 'ACCTG', source: 'Manual', evidence: ['JO-MNL-000512-photos.zip'], breakdown: { labor: 1900, parts: 9200, travel: 0, service: 800, inputTax: 1428 }, approvalChain: ['Finance Manager'] },
-    { memoNo: 'DM-000037', type: 'Debit', clientCode: 'C-00188', referenceInvoiceNo: 'INV-MNL-00001068', referenceType: 'Receipt', referenceId: 'PR-MNL-00000449', amount: 2500, reason: 'Dishonoured check RCBC 0012077 — contract penalty', category: 'Dishonoured check penalty', status: 'Pending Approval',
+    { memoNo: 'DM-000037', type: 'Debit', clientCode: 'C-00188', referenceInvoiceNo: 'DWLCI-261068', referenceType: 'Receipt', referenceId: 'PR-MNL-00000449', amount: 2500, reason: 'Dishonoured check RCBC 0012077 — contract penalty', category: 'Dishonoured check penalty', status: 'Pending Approval',
       workflowId: 'WF-DM-37', createdAt: ago(9), createdBy: 'TREAS', source: 'Auto', evidence: ['RCBC-return-slip.pdf'], approvalChain: ['Finance Manager'] },
   ];
 
@@ -668,7 +670,7 @@ function buildSeedAt(): Db {
     const note = (id: string, at: string, title: string, body: string, link: string, read: boolean, userId = abc) => ({ id, at, title, body, link, read, requiresAck: false, userId });
     const rsc41 = onHire[0]?.chassisNo ?? '';
     const back = gatePasses.filter((g) => g.clientCode === 'C-00123' && g.direction === 'IN').sort((a, b) => b.actualEventAt.localeCompare(a.actualEventAt));
-    const due1101 = invoices.find((i) => i.invoiceNo === 'INV-MNL-00001101');
+    const due1101 = invoices.find((i) => i.invoiceNo === 'DWLCI-261101');
     return [
       // Client Portal Document 3: the first invoice under the receipt basis — the term starts on the receipt date Delbros records.
       ...((i) => (i ? [note('N-CL-13', addHours(i.issuedAt, 1), `Invoice ${i.invoiceNo} issued`, `${formatPhp(i.total)} · the 30-day payment term starts on the receipt date Delbros records for this billing.`, `/client/invoices?open=${i.invoiceNo}`, false)] : []))(invoices.find((x) => x.dueBasis === 'Acknowledgment')),
@@ -680,12 +682,12 @@ function buildSeedAt(): Db {
       note('N-CL-7', addHours(now(), -3), 'EWA EU-000781 created', 'MNL · Juan Dela Cruz · NAB 5678 · valid for 24 hours.', '/client/ewa?open=EU-000781', false),
       // Client Portal Document 2 D-02: the low-balance system notification is sent below ₱10,000 only — ABC (₱11,951.20) gets a plain balance notice.
       note('N-CL-6', addHours(now(), -10), 'E-wallet balance update', `Balance ${formatPhp(11951.2)} after debit memo DM-000021. A system notification and email are sent if it falls below ${formatPhp(10000)}.`, '/client/ewallet', false),
-      note('N-CL-5', ago(1), 'Payment reminder: INV-MNL-00001101', `${formatPhp(due1101?.total)} due ${formatDate(due1101?.dueDate)}.`, '/client/invoices?open=INV-MNL-00001101', false),
-      note('N-CL-4', ago(k0 + 7), 'Invoice INV-MNL-00001102 sent', 'Weekly lease billing — copy sent to billing@example.ph.', '/client/invoices?open=INV-MNL-00001102', true),
+      note('N-CL-5', ago(1), 'Payment reminder: DWLCI-261101', `${formatPhp(due1101?.total)} due ${formatDate(due1101?.dueDate)}.`, '/client/invoices?open=DWLCI-261101', false),
+      note('N-CL-4', ago(k0 + 7), 'Invoice DWLCI-261102 sent', 'Weekly lease billing — copy sent to billing@example.ph.', '/client/invoices?open=DWLCI-261102', true),
       note('N-CL-3', ago(12), 'Debit memo DM-000039 posted', `Park & Fix ABC-CH-2210 — ${formatPhp(2800)}.`, '/client#charges', true),
       ...back.map((g, k) => note(`N-CL-R${k}`, g.actualEventAt, `Unit ${g.chassisNo} returned`, `Gate In ${g.gatePassNo} at ${branches.find((b) => b.code === g.branchCode)?.name ?? g.branchCode}${g.crossBranchCode ? ` (cross-branch, code ${g.crossBranchCode})` : ''}.`, '/client#returns', true)),
       note('N-CL-1', ago(60), `E-wallet deduction ${formatPhp(18048.8)}`, 'Rescue RSC-000020 (debit memo DM-000021) — balance ' + formatPhp(11951.2) + '.', '/client/ewallet', true),
-      note('N-PM-1', ago(15), 'Account on hold', 'INV-MNL-00001050 is 31 days past due. New EWAs and rescue requests are blocked until the balance is settled.', '/client/invoices', false, 'client@pacificmovers.ph'),
+      note('N-PM-1', ago(15), 'Account on hold', 'DWLCI-261050 is 31 days past due. New EWAs and rescue requests are blocked until the balance is settled.', '/client/invoices', false, 'client@pacificmovers.ph'),
     ];
   })();
 
@@ -710,7 +712,7 @@ function buildSeedAt(): Db {
           refund: { method: 'Bank transfer', date: ago(226).slice(0, 10), reference: 'RF-2026-0041', by: 'ACCTG' } }],
         outcome: { kind: 'Refunded', at: ago(226), amount: 15000, reference: 'RF-2026-0041', note: 'Refunded by bank transfer after the contract expired.' } },
       { id: 'CB-7', clientCode: 'C-00123', contractNo: 'SPL-2025-0007', amount: 10000, dateReceived: ago(562).slice(0, 10), receiptRef: 'OR-MNL-00000142', status: 'Applied', paymentMethod: 'Check', receivedBy: 'TREAS', withdrawals: [],
-        outcome: { kind: 'Applied', at: ago(199), amount: 10000, reference: 'INV-MNL-00000987', note: 'Applied to the final Spot Lease bill INV-MNL-00000987 at termination.' } },
+        outcome: { kind: 'Applied', at: ago(199), amount: 10000, reference: 'DWLCI-260987', note: 'Applied to the final Spot Lease bill DWLCI-260987 at termination.' } },
       { id: 'CB-5', clientCode: 'C-00262', contractNo: 'QLP-2026-0003', amount: 20000, dateReceived: ago(205).slice(0, 10), receiptRef: 'OR-MNL-00000300', status: 'Held', withdrawals: [], paymentMethod: 'Bank transfer', receivedBy: 'TREAS' },
       { id: 'CB-2', clientCode: 'C-00188', contractNo: 'SPL-2026-0012', amount: 20000, dateReceived: ago(190).slice(0, 10), receiptRef: 'OR-MNL-00000318', status: 'Held', withdrawals: [] },
       { id: 'CB-3', clientCode: 'C-00201', contractNo: 'LTL-2026-0051', amount: 20000, dateReceived: ago(180).slice(0, 10), receiptRef: 'OR-CEB-00000044', status: 'Withdrawal Pending',
@@ -850,7 +852,7 @@ function buildSeedAt(): Db {
       // DBL-EWL-001 demo: Treasury-cleared PR for Southern Haulers' initial e-wallet funding (no wallet yet)
       { receiptNo: 'PR-BTG-00000072', type: 'PR', clientCode: 'C-00215', date: ago(1).slice(0, 10), amount: 15000, method: 'Bank transfer', reference: 'BPI 778120', applications: [], unapplied: 15000, by: 'TREAS', status: 'Cleared', clearedBy: 'TREAS', clearedAt: ago(1).slice(0, 10), notes: 'Initial e-wallet funding (DBL-EWL-001)' }],
     memos: [...billingMemos, { memoNo: 'DM-000021', type: 'Debit', clientCode: 'C-00123', referenceType: 'Rescue', referenceId: 'RSC-000020', amount: 18048.8, reason: 'Rescue charge (BR-11)', status: 'Posted', createdAt: ago(60) }, { memoNo: 'DM-000039', type: 'Debit', clientCode: 'C-00123', referenceType: 'Park & Fix', referenceId: 'PF-2', amount: 2800, reason: 'Park & Fix ABC-CH-2210 — 8 day(s) × ₱350 (DBL-ALO-005)', status: 'Posted', createdAt: ago(12) }, { memoNo: 'DM-000040', type: 'Debit', clientCode: 'C-00230', referenceType: 'Rescue', referenceId: 'RSC-000038', amount: 7601.44, reason: 'Rescue charge (BR-11)', status: 'Posted', createdAt: ago(6) }],
-    holdEvents: [{ id: 'HE-1', clientCode: 'C-00188', type: 'Auto Hold', at: ago(15), by: 'system', outstanding: 308000, daysOverdue: 31, invoiceNo: 'INV-MNL-00001050', reason: 'Invoice INV-MNL-00001050 unpaid 31 days past due (BR-02)' }],
+    holdEvents: [{ id: 'HE-1', clientCode: 'C-00188', type: 'Auto Hold', at: ago(15), by: 'system', outstanding: 308000, daysOverdue: 31, invoiceNo: 'DWLCI-261050', reason: 'Invoice DWLCI-261050 unpaid 31 days past due (BR-02)' }],
     collections: [
       { clientCode: 'C-00188', stage: '2nd Reminder', stageChangedAt: ago(4), nextActionDue: ahead(6).slice(0, 10), acknowledgedAt: ago(13), soaSends: [{ id: 'SS-1', soaNo: 'SOA-2026-00301', at: ago(14), by: 'CNC.OFF1', channel: 'Email', to: 'ap@pacificmovers.ph' }],
         actions: [{ at: ago(4), action: '2nd Reminder', by: 'system' }, { at: ago(9), action: '1st Reminder', by: 'system' }, { at: ago(13), action: 'SOA acknowledged by client', by: 'CNC.OFF1' }, { at: ago(14), action: 'SOA Sent', by: 'CNC.OFF1', notes: 'SOA-2026-00301 by email' }] },
@@ -912,7 +914,7 @@ function buildSeedAt(): Db {
       // Timeline 2 review: RSC-000040 — requested first, cancelled by the client 45 minutes later while still Requested (allowed before C&C verification).
       { id: 'A-RSC-040R', at: ago(2), actor: 'client@abclogistics.ph', actorRole: 'CLIENT', action: 'rescue.requested', entityType: 'rescue', entityId: 'RSC-000040', after: { status: 'Requested', urgent: true }, source: 'Portal' },
       { id: 'A-RSC-040C', at: addHours(ago(2), 0.75), actor: 'client@abclogistics.ph', actorRole: 'CLIENT', action: 'rescue.cancel', entityType: 'rescue', entityId: 'RSC-000040', before: { status: 'Requested' }, after: { status: 'Cancelled' }, reason: 'Client driver fixed the tire on site; rescue no longer needed.', source: 'Portal' },
-      { id: 'A-1', at: ago(15), actor: 'system', action: 'client.hold.applied', entityType: 'client', entityId: 'C-00188', after: { status: 'Hold' }, reason: 'Invoice INV-MNL-00001050 unpaid 31 days past due (BR-02)' }],
+      { id: 'A-1', at: ago(15), actor: 'system', action: 'client.hold.applied', entityType: 'client', entityId: 'C-00188', after: { status: 'Hold' }, reason: 'Invoice DWLCI-261050 unpaid 31 days past due (BR-02)' }],
     settings: DEFAULT_SETTINGS.map((s) => ({ ...s })),
     // Park & Fix stores CLIENT-OWNED trailers (not in the Delbros fleet, so never in Available / DCIR fleet totals).
     parkFix: [
@@ -935,7 +937,7 @@ function buildSeedAt(): Db {
       { id: 'CRQ-000001', clientCode: 'C-00123', contractNo: 'LTL-2026-0045', kind: 'Amendment', changeArea: 'Branches covered', details: 'Add Batangas, Clark and Cagayan de Oro — our trucks now pick up from these depots.',
         status: 'Approved', submittedAt: ago(160), submittedBy: 'client@abclogistics.ph', decidedAt: ago(155), decidedBy: 'AE.JREYES', decisionNote: 'Branches added to the account (CWS access); rates unchanged.' },
     ],
-    seq: { VI: 2, CBW: 2, EU: 781, GP: 2000, EIR: 500, JO: 520, RSC: 44, TU: 3, CRQ: 1, INV: 1200, OR: 460, CM: 10, DM: 40, PR: 210, PO: 155, RR: 60, RFP: 30, PCV: 88, CT: 70, CL: 262, WF: 10, LE: 1, SOA: 318, STK: 120,EWT: 10, HL: 1 },
+    seq: { VI: 2, CBW: 2, EU: 781, GP: 2000, EIR: 500, JO: 520, RSC: 44, TU: 3, CRQ: 1, INV: 261200, OR: 460, CM: 10, DM: 40, PR: 210, PO: 155, RR: 60, RFP: 30, PCV: 88, CT: 70, CL: 262, WF: 10, LE: 1, SOA: 318, STK: 120,EWT: 10, HL: 1 },
   });
 }
 

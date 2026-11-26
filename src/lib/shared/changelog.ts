@@ -14,6 +14,22 @@ export interface ChangeEntry {
 
 export const CHANGELOG: ChangeEntry[] = [
   {
+    date: '2026-11-25', kind: 'Fix', title: 'Client portal — checklist recheck against the BRD and Delbros source data (Documents 1–3)',
+    why: 'The pending checklist points were rechecked against the BRD (V1.1), the Delbros process flows, the Operational Gap Analysis answers and the Delbros spreadsheets (billing template, VAT filing, master data, client profiling tracker). Where these give the missing detail, the point is completed.',
+    changes: [
+      'Invoice numbers: Delbros format "DWLCI-" + 6 digits in one company-wide series (as on the Delbros printed invoice and VAT filing); demo invoices renumbered (e.g. DWLCI-261119), new billing runs continue it. Lease bills show the billing statement reference "<period end>WK" or "MO".',
+      'Billing cycle per contract (BRD UC-02 / UC-08): demo contracts now carry their client’s cycle — Pacific Movers’ Spot Lease shows Monthly, matching its monthly invoices.',
+      'Low e-wallet notice: besides the client (in-app + email), the Account Executive, Sales Director, Credit & Collection officer and manager, Accounting and the Finance Manager are notified (Delbros answers; BRD UC-10).',
+      'Hold lift (BRD UC-09 / BR-03): the request must state “Balance settled” or “Payment arrangement confirmed” (with the arrangement details); tiered approval and re-hold only for a newly overdue invoice are unchanged.',
+      'Termination fee: Spot Lease and QLP contracts have no termination fee (Delbros master data) — the API refuses an amount and the client sees “None”; LTL keeps the staff-entered fee.',
+      'Handling fee ₱200 and administrative cost ₱80: shown as one-time, collected with the initial monetary requirements before activation (Delbros client profiling tracker: “Admin and Handling Fee ₱280”).',
+      'PHT: table CSV exports convert date-times to Philippine Time (no raw UTC); the vendor statement uses the Manila date.',
+      'Backup / recovery targets settled in doc/backup-and-recovery.md (daily cloud backups, RPO 24 h, 7 + 12 + 2 retention, RTO 1 h).',
+      'Mock DB version 25: saved demo data reloads once. New recheck.test.ts (169 passing).',
+    ],
+    result: 'Results updated in all three sheets of Client_Portal_Document_1_Checklist.xlsx.',
+  },
+  {
     date: '2026-11-25', kind: 'Feature', title: 'Client portal — Document 3 client clarifications (checklist rows 1–5)',
     why: 'The client answered five clarification points: when the 30-day term starts, how receipt is recorded, the pre-termination fee, who starts a portal registration, and backup / recovery targets. Points 1, 2 and 4 replace parts of the Document 2 implementation.',
     changes: [

@@ -16,6 +16,14 @@ function parts(iso: string) {
   return { y: p.year, m: Number(p.month), d: p.day, hh: p.hour === '24' ? '00' : p.hour, mm: p.minute };
 }
 
+/**
+ * Client Portal Document 1 §2.1 (BRD NFR-005): a value written to a CSV export — date-times are converted to Philippine Time and labelled,
+ * never written as raw UTC (e.g. 2026-11-20T03:00:00.000Z → "20-Nov-2026 11:00 PHT"). Plain dates and other values pass through.
+ */
+export function csvValue(v: unknown) {
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) && !Number.isNaN(Date.parse(v))) return `${formatDateTime(v)} PHT`;
+  return v;
+}
 /** DD-MMM-YYYY, e.g. 06-Sep-2026 */
 export function formatDate(iso?: string | null) {
   if (!iso) return '—';

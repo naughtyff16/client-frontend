@@ -7,7 +7,7 @@ import {
   type ClientInternalForm, type ClientPortalForm, type RescueRequestForm, type PaymentStatus, type AgingBuckets,
   type EwalletCategory, type EwalletTxn, type TopupRequest, TOPUP_RULES, nextCollectionStage, MIN_BILLING_DAYS, preTerminationFee, renewalNoticeDates, hireDays, RESCUE_PROBLEM_TYPES, RESCUE_PROBLEM_OTHER, PLATE_RE, LICENCE_RE, type Ewa, type EwaDelivery,
   rescueUnitState, rescueWalletGate, lowBalanceWarning, weeklyCycle, SOA_SCOPE_NOTE, billableDaysOf, manilaDay as manilaDayOf, type GateResult, type BondBreakdown, type VendorInvoice,
-  CONTRACT_TERMS, initialCostSummary, paymentMethodsFor, type Ewallet,
+  CONTRACT_TERMS, HOLD_LIFT_BASES, TERMINATION_FEE_APPLIES, initialCostSummary, paymentMethodsFor, type Ewallet,
 } from '../shared';
 import {
   ApiError, audit, canActOn, db, decide, delay, inScope, me, nextNo, notify, onWorkflowDone, onWorkflowStep, persist, requirePerm, session, setSession,
@@ -140,7 +140,7 @@ function portalLink(link?: string) {
   const id = link.split(/[/?]/).filter(Boolean)[1];
   if (link.startsWith('/rescue')) return id && /^RSC-/.test(id) ? `/client/rescue?open=${id}` : '/client/rescue';
   if (link.startsWith('/ewallet') || link.startsWith('/cashbond')) return '/client/ewallet';
-  if (link.startsWith('/billing') || link.startsWith('/invoices') || link.startsWith('/credit')) return id && /^INV-/.test(id) ? `/client/invoices?open=${id}` : '/client/invoices';
+  if (link.startsWith('/billing') || link.startsWith('/invoices') || link.startsWith('/credit')) return id && /^(INV|DWLCI)-/.test(id) ? `/client/invoices?open=${id}` : '/client/invoices';
   if (link.startsWith('/contracts')) return '/client/contracts';
   if (link.startsWith('/gate') || link.startsWith('/ewa')) return id && /^(EU-|EWA)\d/.test(id) ? `/client/ewa?open=${id}` : '/client/ewa';
   return '/client';
@@ -304,6 +304,7 @@ function ewalletPost(clientCode: string, type: 'Replenishment' | 'Deduction' | '
  * ₱10,000 (setting ewl.low_balance_notify_below). Sent once each time the balance crosses under it; it never restricts EWA creation.
  * The mock queues the email to the client's active portal users and billing email; the mail service sets Sent / Failed.
  */
+const LOW_BALANCE_ROLES: string[] = ['SALES_DIRECTOR', 'CNC_OFFICER', 'CNC_MANAGER', 'ACCOUNTING', 'FINANCE_MANAGER'];
 export function lowBalanceReminder(w: Ewallet, before: number) {
   const trigger = round2(Number(S()['ewl.low_balance_notify_below'] ?? 10000));
   if (!(w.balance < trigger && before >= trigger)) return undefined;
@@ -313,6 +314,12 @@ export function lowBalanceReminder(w: Ewallet, before: number) {
   (w.lowBalanceReminders ??= []).unshift(r);
   notify('ewallet.low_balance', `E-wallet balance below ₱${trigger.toLocaleString('en-PH')} — please top up`, `Balance ₱${w.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })}. EWA creation is not restricted. An email was also sent to ${to.join(', ')}.`,
     { clientCode: w.clientCode, extraUsers: db.users.filter((x) => x.realm === 'CLIENT_PORTAL' && x.clientCode === w.clientCode).map((x) => x.userId), link: '/client/ewallet' });
+  // Delbros answers (Operational Gap Analysis, E-wallet notifications): sent immediately when the balance falls below the maintaining balance, to the
+  // Sales Account Executive and their manager, Credit & Collection staff and their manager, and the Accounting Manager and Assistant (BRD UC-10 step 4).
+  const internal = db.users.filter((x) => x.realm === 'INTERNAL' && x.status === 'Active' && (x.userId === c?.aeAssigned || x.roles.some((r) => LOW_BALANCE_ROLES.includes(r)))).map((x) => x.userId);
+  notify('ewallet.low_balance.internal', `${c?.clientName ?? w.clientCode}: e-wallet below ₱${trigger.toLocaleString('en-PH')}`, `Balance ₱${w.balance.toLocaleString('en-PH', { minimumFractionDigits: 2 })} — the client was emailed to top up.`,
+    { clientCode: w.clientCode, aeUserId: c?.aeAssigned, extraUsers: internal, link: `/ewallet?client=${w.clientCode}` });
+  Object.assign(r, { staffNotified: internal });
   audit('ewallet.low_balance_email', 'ewallet', w.clientCode, r);
   return r;
 }
@@ -1338,6 +1345,7 @@ export const api = {
       if (ct.status !== 'Active') throw new ApiError('INVALID_STATE', 'Only Active contracts can be terminated.', 409);
       if (!reason.trim() || !effectiveDate) throw new ApiError('VALIDATION_FAILED', 'Reason and effective date are required.', 422);
       if (fee == null || !Number.isFinite(fee) || fee < 0) throw new ApiError('VALIDATION_FAILED', 'Enter the pre-termination fee (₱0 if none applies).', 422, { fee: 'Amount, ₱0 or more' });
+      if (fee > 0 && !TERMINATION_FEE_APPLIES[ct.contractType]) throw new ApiError('VALIDATION_FAILED', `${CONTRACT_TYPES[ct.contractType]?.name ?? ct.contractType} contracts have no termination fee — enter ₱0.`, 422, { fee: 'No termination fee for this contract type' });
       if (ct.termination?.status === 'Pending') throw new ApiError('INVALID_STATE', 'A termination request is already pending.', 409);
       const wf = startWorkflow('CONTRACT_TERMINATION', `Contract termination — ${no}`, 'contract', no, [{ label: 'Sales Director review', roles: ['SALES_DIRECTOR'] }, { label: 'Finance Manager approval', roles: ['FINANCE_MANAGER'] }], undefined, ct.branchCode);
       ct.termination = { workflowId: wf.id, reason, status: 'Pending', effectiveDate, fee: round2(fee), feeEnteredBy: me().userId, feeEnteredAt: nowIso(), feeNote: feeNote?.trim() || undefined };
@@ -1354,6 +1362,7 @@ export const api = {
         const ct = db.contracts.find((x) => x.contractNo === no);
         if (!ct?.termination || ct.termination.status !== 'Pending') throw new ApiError('INVALID_STATE', 'The fee can be changed only while the termination is pending approval.', 409);
         if (!Number.isFinite(fee) || fee < 0) throw new ApiError('VALIDATION_FAILED', 'Enter the pre-termination fee (₱0 if none applies).', 422, { fee: 'Amount, ₱0 or more' });
+        if (fee > 0 && !TERMINATION_FEE_APPLIES[ct.contractType]) throw new ApiError('VALIDATION_FAILED', `${CONTRACT_TYPES[ct.contractType]?.name ?? ct.contractType} contracts have no termination fee.`, 422, { fee: 'No termination fee for this contract type' });
         if (reason.trim().length < 10) throw new ApiError('VALIDATION_FAILED', 'Say why the fee is being changed (at least 10 characters).', 422, { reason: 'At least 10 characters' });
         const before = { fee: ct.termination.fee };
         Object.assign(ct.termination, { fee: round2(fee), feeEnteredBy: me().userId, feeEnteredAt: nowIso() });
@@ -2871,7 +2880,8 @@ export const api = {
         lines.push(...adj.map((a) => ({ id: uid(), lineType: (a.type === 'Special billing' ? 'Special' : a.type === 'Late fee' ? 'Penalty' : 'Adjustment') as InvoiceLine['lineType'], description: `${a.type ?? 'Adjustment'} — ${a.reason}`, rateType: 'Fixed — adjustment', amount: a.amount, adjType: a.type, reason: a.reason, evidence: a.evidence, by, at })));
         const totals = invoiceTotals(lines.filter((l) => !l.held).map((l) => l.amount), Number(S()['fin.vat_pct'] ?? 0.12));
         const c = mustClient(d.clientCode);
-        const no = nextNo('INV', `INV-${c.branchCode}-`, 8);
+        // Delbros invoice numbers: "DWLCI-" + 6 digits, one company-wide series (BRD source data — billing template, VAT filing). BIR ATP details: Finance to supply.
+        const no = nextNo('INV', 'DWLCI-', 6);
         db.invoices.unshift({ invoiceNo: no, clientCode: c.clientCode, contractNo: d.contractNo, periodStart: input.periodStart, periodEnd: input.periodEnd, billType: 'Lease', lines, ...totals, amountPaid: 0,
           // Timeline 3 (DBL-CNC-005, provisional): under the acknowledgment basis the due date is set only when receipt is acknowledged.
           ...(ackBasis() ? { dueDate: '', dueBasis: 'Acknowledgment' as const } : { dueDate: d.dueDate, dueBasis: 'Invoice date' as const }),
@@ -3258,11 +3268,17 @@ export const api = {
         };
       });
     },
+    /**
+     * BRD UC-09 step 4: Credit & Collection submits a hold-lift request once the client's balance is settled or a payment arrangement is confirmed;
+     * approval is tiered by outstanding balance (BR-03). After the lift only a newly overdue invoice re-holds the account (UC-09.EX.1).
+     */
     async requestHoldLift(code: string, basis: string, arrangement?: string) {
       requirePerm('cnc.hold_lift', 'add');
       await delay();
       const c = mustClient(code);
       if (c.status !== 'Hold') throw new ApiError('INVALID_STATE', 'Client is not on hold.', 409);
+      if (!HOLD_LIFT_BASES.includes(basis as (typeof HOLD_LIFT_BASES)[number])) throw new ApiError('VALIDATION_FAILED', `Lifting basis must be ${HOLD_LIFT_BASES.join(' or ')} (BRD UC-09).`, 422, { basis: 'Balance settled or Payment arrangement confirmed' });
+      if (basis !== 'Balance settled' && (arrangement?.trim().length ?? 0) < 10) throw new ApiError('VALIDATION_FAILED', 'Describe the confirmed payment arrangement (at least 10 characters).', 422, { arrangement: 'At least 10 characters' });
       if (db.workflows.some((w) => w.matrixCode === 'HOLD_LIFT' && w.subjectId === code && w.status === 'Pending')) throw new ApiError('INVALID_STATE', 'A hold-lift request is already pending.', 409);
       const outstanding = outstandingOf(code);
       const tier = holdLiftTier(outstanding, Number(S()['cnc.tier1_max'] ?? 100000), Number(S()['cnc.tier2_max'] ?? 500000));

@@ -12,7 +12,7 @@ import { cn } from "../lib/ui";
 export type InvRow = Awaited<ReturnType<typeof api.billing.invoices>>[number];
 export type SoaLine = Awaited<ReturnType<typeof api.credit.soa>>["lines"][number];
 
-/** How the amount is made up, in one sentence (review: INV-MNL-00001118 ₱5,040 = ₱4,500 damage + ₱540 VAT). */
+/** How the amount is made up, in one sentence (review: DWLCI-261118 ₱5,040 = ₱4,500 damage + ₱540 VAT). */
 export function billingBasis(i: InvRow) {
   if (i.isLease) {
     const units = i.lines.filter((l) => l.lineType === "Lease" && !l.held);

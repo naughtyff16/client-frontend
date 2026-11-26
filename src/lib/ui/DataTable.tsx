@@ -7,6 +7,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, S
 import { Button } from './Button';
 import { EmptyState, TableSkeleton } from './Feedback';
 import { cn } from './cn';
+import { csvValue } from '../shared/format';
 
 export type { ColumnDef };
 
@@ -36,7 +37,8 @@ function toCsv<T>(rows: T[], cols: ColumnDef<T, unknown>[]) {
   const keyed = cols.filter((c) => 'accessorKey' in c && c.accessorKey) as (ColumnDef<T, unknown> & { accessorKey: string; header: unknown })[];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = keyed.map((c) => esc(typeof c.header === 'string' ? c.header : c.accessorKey)).join(',');
-  const body = rows.map((r) => keyed.map((c) => esc((r as Record<string, unknown>)[c.accessorKey])).join(',')).join('\n');
+  // Date-times are exported in Philippine Time (Client Portal Document 1 §2.1), not raw UTC.
+  const body = rows.map((r) => keyed.map((c) => esc(csvValue((r as Record<string, unknown>)[c.accessorKey]))).join(',')).join('\n');
   return `${head}\n${body}`;
 }
 
